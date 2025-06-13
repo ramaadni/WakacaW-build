@@ -1,0 +1,91 @@
+name: build-wkcw
+
+on:
+  workflow_dispatch:
+    inputs:
+      KERNEL_REPO:
+        description: 'Link repo kernel'
+        required: true
+        default: 'https://github.com/ramaadni/kernel_common_gki-5.10'
+      KERNEL_BRANCH:
+        description: 'Branch kernel'
+        required: true
+        default: 'wkcw'
+      RELEASE:
+        description: 'Release kernel?'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Set up dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y git wget curl build-essential bc bison \
+          flex libssl-dev libncurses-dev libelf-dev ccache python3 unzip
+
+    - name: Create Swap
+      run: |
+        sudo fallocate -l 10G /swapfile
+        sudo chmod 600 /swapfile
+        sudo mkswap /swapfile
+        sudo swapon /swapfile
+        free -h
+
+    - name: Clone Kernel Source
+      run: |
+        git clone --depth=1 ${{ github.event.inputs.KERNEL_REPO }} -b ${{ github.event.inputs.KERNEL_BRANCH }} kernel
+
+    - name: Download Clang
+      run: |
+        mkdir clang
+        wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r547379.tar.gz -O clang.tar.gz
+        tar -xf clang.tar.gz -C clang
+
+    - name: Build Kernel
+      run: |
+        cd kernel
+        export ARCH=arm64
+        export SUBARCH=arm64
+        export CLANG_PATH=$GITHUB_WORKSPACE/clang
+        export PATH=$CLANG_PATH/bin:$PATH
+
+        make O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1 gki_defconfig
+        make -j$(nproc) O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1
+
+    - name: Package Kernel with AnyKernel3
+      id: zipkernel
+      run: |
+        DATE=$(date +%Y%m%d)
+        ZIP_NAME="WakacaW-GKI-${DATE}.zip"
+        TAG_NAME="WakacaW-${DATE}"
+        RELEASE_TITLE="WakacaW GKI - ${DATE}"
+
+        git clone https://github.com/ramaadni/AnyKernel3
+        cp kernel/out/arch/arm64/boot/Image.gz AnyKernel3/
+        cd AnyKernel3
+        zip -r9 "../$ZIP_NAME" ./*
+
+        echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
+        echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+        echo "release_title=$RELEASE_TITLE" >> $GITHUB_OUTPUT
+
+    - name: Upload to GitHub Release
+      if: ${{ github.event.inputs.RELEASE == 'true' }}
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.zipkernel.outputs.tag_name }}
+        name: ${{ steps.zipkernel.outputs.release_title }}
+        files: ${{ steps.zipkernel.outputs.zip_name }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload Flashable Kernel ZIP
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.zipkernel.outputs.zip_name }}
+        path: ${{ steps.zipkernel.outputs.zip_name }}
