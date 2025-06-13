@@ -11,6 +11,16 @@ on:
         description: 'Branch kernel'
         required: true
         default: 'wkcw'
+      NOTIFY_START:
+        description: 'Send notify to Telegram?'
+        required: false
+        default: 'false'
+        type: boolean
+      NOTIFY_SUCCESS:
+        description: 'Notify on Success?'
+        required: false
+        default: 'false'
+        type: boolean
       RELEASE:
         description: 'Release kernel?'
         required: false
@@ -70,6 +80,19 @@ jobs:
         mkdir clang
         wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r547379.tar.gz -O clang.tar.gz
         tar -xf clang.tar.gz -C clang
+
+    - name: Notify Build Start
+      if: ${{ github.event.inputs.NOTIFY_START == 'true' }}
+      uses: appleboy/telegram-action@master
+      with:
+        to: ${{ github.event.inputs.TELEGRAM_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
+        token: ${{ secrets.TELEGRAM_TOKEN }}
+        format: html
+        message: |
+          <b>🚀 WakacaW GKI Build Started</b>
+          🔧 <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View Workflow Run</a>
+          <b>📦 Version</b>: <code>Noroot, KSUNext+SUSFS, and SukiSU+SUSFS</code>
+          <b>📅 Date</b>: <code>${{ env.DATE }}</code>
 
     - name: Build Kernel
       run: |
@@ -161,3 +184,16 @@ jobs:
           files: "*.zip"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify Build Success
+        if: ${{ success() && github.event.inputs.NOTIFY_SUCCESS == 'true' }}
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ github.event.inputs.TELEGRAM_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: html
+          message: |
+            <b>✅ WakacaW GKI Build Success</b>
+            <b>📦 Version</b>: <code>Noroot, KSUNext+SUSFS, and SukiSU+SUSFS</code>
+            <b>📅 Date</b>: <code>${{ env.DATE }}</code>
+            <b>🔗 Download</b>: <a href="${{ github.server_url }}/${{ github.repository }}/releases/tag/WakacaW-GKI-${{ env.DATE }}">Here</a>
