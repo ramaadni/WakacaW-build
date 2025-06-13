@@ -28,7 +28,31 @@ on:
         type: boolean
 
 jobs:
+  notify-start:
+    if: ${{ github.event.inputs.NOTIFY_START == 'true' }}
+    runs-on: ubuntu-latest
+    outputs:
+      date: ${{ steps.setdate.outputs.date }}
+    steps:
+      - name: Set Current Date
+        id: setdate
+        run: echo "date=$(date +%Y%m%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Build Start
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ github.event.inputs.TELEGRAM_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: html
+          disable_web_page_preview: true
+          message: |
+            <b>🚀 WakacaW GKI Build Started</b>
+            🔧 <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View Workflow Run</a>
+            <b>📦 Version</b>: <code>Noroot, KSUNext+SUSFS, and SukiSU+SUSFS</code>
+            <b>📅 Date</b>: <code>${{ steps.setdate.outputs.date }}</code>
+
   build:
+    needs: notify-start
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -36,6 +60,10 @@ jobs:
     name: Build ${{ matrix.variant }}
 
     steps:
+    - name: Set Current Date
+      id: setdate
+      run: echo "date=$(date +%Y%m%d)" >> "$GITHUB_OUTPUT"
+
     - name: Set up dependencies
       run: |
         sudo apt update
@@ -81,19 +109,6 @@ jobs:
         wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r547379.tar.gz -O clang.tar.gz
         tar -xf clang.tar.gz -C clang
 
-    - name: Notify Build Start
-      if: ${{ github.event.inputs.NOTIFY_START == 'true' }}
-      uses: appleboy/telegram-action@master
-      with:
-        to: ${{ github.event.inputs.TELEGRAM_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
-        token: ${{ secrets.TELEGRAM_TOKEN }}
-        format: html
-        message: |
-          <b>🚀 WakacaW GKI Build Started</b>
-          🔧 <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View Workflow Run</a>
-          <b>📦 Version</b>: <code>Noroot, KSUNext+SUSFS, and SukiSU+SUSFS</code>
-          <b>📅 Date</b>: <code>${{ env.DATE }}</code>
-
     - name: Build Kernel
       run: |
         if [[ "${{ matrix.variant }}" == "noroot" ]]; then
@@ -125,7 +140,6 @@ jobs:
         fi
 
         git clone https://github.com/ramaadni/AnyKernel3
-
         if [[ "${{ matrix.variant }}" == "noroot" ]]; then
           cp kernel/out/arch/arm64/boot/Image.gz AnyKernel3/
         else
@@ -143,12 +157,13 @@ jobs:
         path: ${{ steps.zipkernel.outputs.zip_name }}
 
   release:
-    needs: build
+    needs: [build]
     if: ${{ github.event.inputs.RELEASE == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Set Current Date
-        run: echo "DATE=$(date +%Y%m%d)" >> $GITHUB_ENV
+        id: setdate
+        run: echo "date=$(date +%Y%m%d)" >> "$GITHUB_OUTPUT"
 
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
@@ -156,13 +171,11 @@ jobs:
           path: .
 
       - name: Move all ZIP files to root
-        run: |
-          find . -name "*.zip" -exec mv {} . \;
+        run: find . -name "*.zip" -exec mv {} . \;
 
       - name: Generate Release Notes
         run: |
           echo "🔧 **WakacaW GKI Release**" > release.txt
-          echo "" >> release.txt
           echo "- 🧩 WakacaW-GKI: Without root" >> release.txt
           echo "- 🛡️ WakacaW-GKI-KSUNext+SUSFS: With root KernelSU Next + SUSFS" >> release.txt
           echo "- 🦊 WakacaW-GKI-SukiSU+SUSFS: With root SukiSU + SUSFS" >> release.txt
@@ -178,8 +191,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: WakacaW-GKI-${{ env.DATE }}
-          name: WakacaW GKI - ${{ env.DATE }}
+          tag_name: WakacaW-GKI-${{ steps.setdate.outputs.date }}
+          name: WakacaW GKI - ${{ steps.setdate.outputs.date }}
           body_path: release.txt
           files: "*.zip"
         env:
@@ -192,8 +205,9 @@ jobs:
           to: ${{ github.event.inputs.TELEGRAM_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
           format: html
+          disable_web_page_preview: true
           message: |
             <b>✅ WakacaW GKI Build Success</b>
             <b>📦 Version</b>: <code>Noroot, KSUNext+SUSFS, and SukiSU+SUSFS</code>
-            <b>📅 Date</b>: <code>${{ env.DATE }}</code>
-            <b>🔗 Download</b>: <a href="${{ github.server_url }}/${{ github.repository }}/releases/tag/WakacaW-GKI-${{ env.DATE }}">Here</a>
+            <b>📅 Date</b>: <code>${{ steps.setdate.outputs.date }}</code>
+            <b>🔗 Download</b>: <a href="${{ github.server_url }}/${{ github.repository }}/releases/tag/WakacaW-GKI-${{ steps.setdate.outputs.date }}">Here</a>
