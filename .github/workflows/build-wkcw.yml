@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        variant: [noroot, kernelsu, sukisu]
+        variant: [noroot, ksunext, sukisu]
     name: Build ${{ matrix.variant }}
 
     steps:
@@ -65,8 +65,8 @@ jobs:
 
     - name: Inject Variant Patch (KSU/SukiSU)
       run: |
-        if [[ "${{ matrix.variant }}" == "kernelsu" ]]; then
-          cd kernelsu
+        if [[ "${{ matrix.variant }}" == "ksunext" ]]; then
+          cd ksunext
           curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -
           curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next-susfs/kernel/setup.sh" | bash -s next-susfs
         elif [[ "${{ matrix.variant }}" == "sukisu" ]]; then
@@ -118,7 +118,7 @@ jobs:
 
         if [[ "${{ matrix.variant }}" == "noroot" ]]; then
           ZIP_NAME="WakacaW-GKI-${DATE}.zip"
-        elif [[ "${{ matrix.variant }}" == "kernelsu" ]]; then
+        elif [[ "${{ matrix.variant }}" == "ksunext" ]]; then
           ZIP_NAME="WakacaW-GKI-KSUNext+SUSFS-${DATE}.zip"
         elif [[ "${{ matrix.variant }}" == "sukisu" ]]; then
           ZIP_NAME="WakacaW-GKI-SukiSU+SUSFS-${DATE}.zip"
