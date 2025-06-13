@@ -172,7 +172,7 @@ jobs:
           echo "- SUSFS patch has been applied to SukiSU & KernelSU" >> release.txt
           echo "- Can be used on devices with GKI kernel (android12-.10)" >> release.txt
           echo "" >> release.txt
-          echo "📄 **Full changelog**: [Here](https://github.com/ramaadni/kernel_common_gki-5.10)" >> release.txt
+          echo "📄 **Full changelog**: [Here](${{ github.event.inputs.KERNEL_REPO }}/commits/${{ github.event.inputs.KERNEL_BRANCH }})" >> release.txt
           echo "💬 Bug reports & discussion: [Support](https://t.me/rmdnsupport)" >> release.txt
 
       - name: Create GitHub Release
