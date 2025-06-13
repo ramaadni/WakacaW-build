@@ -132,6 +132,10 @@ jobs:
         with:
           path: .
 
+      - name: Move all ZIP files to root
+        run: |
+          find . -name "*.zip" -exec mv {} . \;
+
       - name: Generate Release Notes
         run: |
           echo "🔧 **WakacaW GKI Release**" > release.txt
