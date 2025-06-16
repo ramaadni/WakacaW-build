@@ -59,21 +59,21 @@ jobs:
           echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
 
   notify-start:
-    if: ${{ github.event.inputs.NOTIFY_START == true }}
+    if: ${{ github.event.inputs.NOTIFY_START == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Notify Build Start
         uses: appleboy/telegram-action@master
         with:
-          to: ${{ github.event.inputs.TELEGRAM_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
           format: html
           disable_web_page_preview: true
           message: |
             <b>🚀 WakacaW GKI Build Started</b>
             🔧 <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View Workflow Run</a>
-            <b>📦 Variants</b>: 
-            <code>${{ github.event.inputs.BUILD_NOROOT == 'true' && 'Noroot' || '' }} ${{ github.event.inputs.BUILD_KSUNEXT == 'true' && 'KSUNext' || '' }} ${{ github.event.inputs.BUILD_SUKISU == 'true' && 'SukiSU' || '' }}</code>
+            <b>📦 Variants</b>: <code>${{ github.event.inputs.BUILD_NOROOT == 'true' && 'Noroot' || '' }} ${{ github.event.inputs.BUILD_KSUNEXT == 'true' && 'KSUNext' || '' }} ${{ github.event.inputs.BUILD_SUKISU == 'true' && 'SukiSU' || '' }}</code>
+            <b>📅 Date</b>: <code>${{ steps.setdate.outputs.date }}</code>
 
   build:
     needs: [setup-matrix]
@@ -182,15 +182,22 @@ jobs:
           name: ${{ steps.zipkernel.outputs.zip_name }}
           path: ${{ steps.zipkernel.outputs.zip_name }}
 
-  release:
+  finalize:
     needs: [build]
-    if: ${{ github.event.inputs.RELEASE == true }}
     runs-on: ubuntu-latest
+    if: always()
+    outputs:
+      date: ${{ steps.setdate.outputs.date }}
     steps:
       - name: Set Current Date
         id: setdate
         run: echo "date=$(date +%Y%m%d)" >> "$GITHUB_OUTPUT"
 
+  release:
+    needs: [finalize]
+    if: ${{ github.event.inputs.RELEASE == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
         with:
@@ -214,23 +221,27 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: WakacaW-GKI-${{ steps.setdate.outputs.date }}
-          name: WakacaW GKI - ${{ steps.setdate.outputs.date }}
+          tag_name: WakacaW-GKI-${{ needs.finalize.outputs.date }}
+          name: WakacaW GKI - ${{ needs.finalize.outputs.date }}
           body_path: release.txt
           files: "**/*.zip"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  notify-success:
+    needs: [finalize]
+    if: ${{ success() && github.event.inputs.NOTIFY_SUCCESS == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
       - name: Notify Build Success
-        if: ${{ success() && github.event.inputs.NOTIFY_SUCCESS == true }}
         uses: appleboy/telegram-action@master
         with:
-          to: ${{ github.event.inputs.TELEGRAM_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
           format: html
           disable_web_page_preview: true
           message: |
             <b>✅ WakacaW GKI Build Success</b>
             <b>📦 Variants</b>: Noroot, KSUNext, SukiSU (if selected)
-            <b>📅 Date</b>: <code>${{ steps.setdate.outputs.date }}</code>
-            <b>🔗 Download</b>: <a href="${{ github.server_url }}/${{ github.repository }}/releases/tag/WakacaW-GKI-${{ steps.setdate.outputs.date }}">Here</a>
+            <b>📅 Date</b>: <code>${{ needs.finalize.outputs.date }}</code>
+            <b>🔗 Download</b>: <a href="${{ github.server_url }}/${{ github.repository }}/releases/tag/WakacaW-GKI-${{ needs.finalize.outputs.date }}">Here</a>
