@@ -170,9 +170,6 @@ jobs:
         with:
           path: .
 
-      - name: Move all ZIP files to root
-        run: find . -name "*.zip" -exec mv {} . \;
-
       - name: Generate Release Notes
         run: |
           echo "🔧 **WakacaW GKI Release**" > release.txt
@@ -194,9 +191,9 @@ jobs:
           tag_name: WakacaW-GKI-${{ steps.setdate.outputs.date }}
           name: WakacaW GKI - ${{ steps.setdate.outputs.date }}
           body_path: release.txt
-          files: "*.zip"
+          files: "**/*.zip"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Notify Build Success
         if: ${{ success() && github.event.inputs.NOTIFY_SUCCESS == 'true' }}
