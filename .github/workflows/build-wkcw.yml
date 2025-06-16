@@ -11,33 +11,57 @@ on:
         description: 'Branch kernel'
         required: true
         default: 'wkcw'
+      BUILD_NOROOT:
+        description: 'Build Noroot variant'
+        type: boolean
+        default: true
+      BUILD_KSUNEXT:
+        description: 'Build KSUNext variant'
+        type: boolean
+        default: false
+      BUILD_SUKISU:
+        description: 'Build SukiSU variant'
+        type: boolean
+        default: false
       NOTIFY_START:
         description: 'Send notify to Telegram?'
-        required: false
-        default: 'false'
         type: boolean
+        default: false
       NOTIFY_SUCCESS:
         description: 'Notify on Success?'
-        required: false
-        default: 'false'
         type: boolean
+        default: false
       RELEASE:
         description: 'Release kernel?'
-        required: false
-        default: 'false'
         type: boolean
+        default: false
 
 jobs:
-  notify-start:
-    if: ${{ github.event.inputs.NOTIFY_START == 'true' }}
+  setup-matrix:
     runs-on: ubuntu-latest
     outputs:
-      date: ${{ steps.setdate.outputs.date }}
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - name: Set Current Date
-        id: setdate
-        run: echo "date=$(date +%Y%m%d)" >> "$GITHUB_OUTPUT"
+      - name: Set build matrix
+        id: set-matrix
+        run: |
+          MATRIX='['
+          if [ "${{ github.event.inputs.BUILD_NOROOT }}" == "true" ]; then
+            MATRIX+='{"name":"noroot"},'
+          fi
+          if [ "${{ github.event.inputs.BUILD_KSUNEXT }}" == "true" ]; then
+            MATRIX+='{"name":"ksunext"},'
+          fi
+          if [ "${{ github.event.inputs.BUILD_SUKISU }}" == "true" ]; then
+            MATRIX+='{"name":"sukisu"},'
+          fi
+          MATRIX="${MATRIX%,}]"
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
 
+  notify-start:
+    if: ${{ github.event.inputs.NOTIFY_START == true }}
+    runs-on: ubuntu-latest
+    steps:
       - name: Notify Build Start
         uses: appleboy/telegram-action@master
         with:
@@ -48,117 +72,119 @@ jobs:
           message: |
             <b>🚀 WakacaW GKI Build Started</b>
             🔧 <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View Workflow Run</a>
-            <b>📦 Version</b>: <code>Noroot, KSUNext+SUSFS, and SukiSU+SUSFS</code>
-            <b>📅 Date</b>: <code>${{ steps.setdate.outputs.date }}</code>
+            <b>📦 Variants</b>: 
+            <code>${{ github.event.inputs.BUILD_NOROOT == 'true' && 'Noroot' || '' }} ${{ github.event.inputs.BUILD_KSUNEXT == 'true' && 'KSUNext' || '' }} ${{ github.event.inputs.BUILD_SUKISU == 'true' && 'SukiSU' || '' }}</code>
 
   build:
-    needs: notify-start
+    needs: [setup-matrix]
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        variant: [noroot, ksunext, sukisu]
-    name: Build ${{ matrix.variant }}
+        include: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
+    name: Build ${{ matrix.name }}
 
     steps:
-    - name: Set Current Date
-      id: setdate
-      run: echo "date=$(date +%Y%m%d)" >> "$GITHUB_OUTPUT"
+      - name: Set up dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y git wget curl build-essential bc bison \
+            flex libssl-dev libncurses-dev libelf-dev ccache python3 unzip
 
-    - name: Set up dependencies
-      run: |
-        sudo apt update
-        sudo apt install -y git wget curl build-essential bc bison \
-          flex libssl-dev libncurses-dev libelf-dev ccache python3 unzip
+      - name: Create Swap
+        run: |
+          sudo fallocate -l 10G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
 
-    - name: Create Swap
-      run: |
-        sudo fallocate -l 10G /swapfile
-        sudo chmod 600 /swapfile
-        sudo mkswap /swapfile
-        sudo swapon /swapfile
+      - name: Clone Kernel Source
+        run: |
+          git clone --depth=1 ${{ github.event.inputs.KERNEL_REPO }} -b ${{ github.event.inputs.KERNEL_BRANCH }} kernel
 
-    - name: Clone Kernel Source
-      run: |
-        git clone --depth=1 ${{ github.event.inputs.KERNEL_REPO }} -b ${{ github.event.inputs.KERNEL_BRANCH }} kernel
-
-    - name: Setup Worktree if Needed
-      run: |
-        if [[ "${{ matrix.variant }}" != "noroot" ]]; then
+      - name: Setup Worktree (for ksunext/sukisu)
+        if: matrix.name != 'noroot'
+        run: |
           cd kernel
           git config user.name "Ramadhani"
           git config user.email "ramadhanifals@gmail.com"
-          git branch -f temp-${{ matrix.variant }} ${{ github.event.inputs.KERNEL_BRANCH }}
-          git worktree add ../${{ matrix.variant }} temp-${{ matrix.variant }}
-        fi
+          git branch -f temp-${{ matrix.name }} ${{ github.event.inputs.KERNEL_BRANCH }}
+          git worktree add ../${{ matrix.name }} temp-${{ matrix.name }}
 
-    - name: Inject Variant Patch (KSU/SukiSU)
-      run: |
-        if [[ "${{ matrix.variant }}" == "ksunext" ]]; then
-          cd ksunext
-          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -
-          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next-susfs/kernel/setup.sh" | bash -s next-susfs
-        elif [[ "${{ matrix.variant }}" == "sukisu" ]]; then
-          cd sukisu
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
-        fi
+      - name: Inject Variant Patch (KSU/SukiSU)
+        run: |
+          if [[ "${{ matrix.name }}" == "ksunext" ]]; then
+            cd ksunext
+            curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -
+            curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next-susfs/kernel/setup.sh" | bash -s next-susfs
+          elif [[ "${{ matrix.name }}" == "sukisu" ]]; then
+            cd sukisu
+            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
+            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
+          fi
 
-    - name: Download Clang
-      run: |
-        mkdir clang
-        wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r547379.tar.gz -O clang.tar.gz
-        tar -xf clang.tar.gz -C clang
+      - name: Download Clang
+        run: |
+          mkdir clang
+          wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r547379.tar.gz -O clang.tar.gz
+          tar -xf clang.tar.gz -C clang
 
-    - name: Build Kernel
-      run: |
-        if [[ "${{ matrix.variant }}" == "noroot" ]]; then
-          cd kernel
-        else
-          cd ${{ matrix.variant }}
-        fi
+      - name: Set CONFIG_LOCALVERSION
+        run: |
+          if [[ "${{ matrix.name }}" == "noroot" ]]; then
+            DEFCONFIG=kernel/arch/arm64/configs/gki_defconfig
+            VERSION="-WakacaW"
+          elif [[ "${{ matrix.name }}" == "ksunext" ]]; then
+            DEFCONFIG=ksunext/arch/arm64/configs/gki_defconfig
+            VERSION="-WakacaW-KSUNext"
+          elif [[ "${{ matrix.name }}" == "sukisu" ]]; then
+            DEFCONFIG=sukisu/arch/arm64/configs/gki_defconfig
+            VERSION="-WakacaW-SukiSU"
+          fi
+          sed -i '/CONFIG_LOCALVERSION/d' $DEFCONFIG
+          echo "CONFIG_LOCALVERSION=\"$VERSION\"" >> $DEFCONFIG
 
-        export ARCH=arm64
-        export SUBARCH=arm64
-        export CLANG_PATH=$GITHUB_WORKSPACE/clang
-        export PATH=$CLANG_PATH/bin:$PATH
+      - name: Build Kernel
+        run: |
+          cd ${{ matrix.name == 'noroot' && 'kernel' || matrix.name }}
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CLANG_PATH=$GITHUB_WORKSPACE/clang
+          export PATH=$CLANG_PATH/bin:$PATH
 
-        make O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1 gki_defconfig
-        make -j$(nproc) O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1
+          make O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1 gki_defconfig
+          make -j$(nproc) O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1
 
-    - name: Package Kernel with AnyKernel3
-      id: zipkernel
-      run: |
-        DATE=$(date +%Y%m%d)
-        echo "DATE=$DATE" >> $GITHUB_ENV
+      - name: Package Kernel with AnyKernel3
+        id: zipkernel
+        run: |
+          DATE=$(date +%Y%m%d)
+          echo "DATE=$DATE" >> $GITHUB_ENV
+          if [[ "${{ matrix.name }}" == "noroot" ]]; then
+            ZIP_NAME="WakacaW-GKI-${DATE}.zip"
+            OUT_DIR="kernel"
+          elif [[ "${{ matrix.name }}" == "ksunext" ]]; then
+            ZIP_NAME="WakacaW-GKI-KSUNext+SUSFS-${DATE}.zip"
+            OUT_DIR="ksunext"
+          elif [[ "${{ matrix.name }}" == "sukisu" ]]; then
+            ZIP_NAME="WakacaW-GKI-SukiSU+SUSFS-${DATE}.zip"
+            OUT_DIR="sukisu"
+          fi
 
-        if [[ "${{ matrix.variant }}" == "noroot" ]]; then
-          ZIP_NAME="WakacaW-GKI-${DATE}.zip"
-        elif [[ "${{ matrix.variant }}" == "ksunext" ]]; then
-          ZIP_NAME="WakacaW-GKI-KSUNext+SUSFS-${DATE}.zip"
-        elif [[ "${{ matrix.variant }}" == "sukisu" ]]; then
-          ZIP_NAME="WakacaW-GKI-SukiSU+SUSFS-${DATE}.zip"
-        fi
+          git clone https://github.com/ramaadni/AnyKernel3
+          cp $OUT_DIR/out/arch/arm64/boot/Image.gz AnyKernel3/
+          cd AnyKernel3
+          zip -r9 "../$ZIP_NAME" ./*
+          echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
 
-        git clone https://github.com/ramaadni/AnyKernel3
-        if [[ "${{ matrix.variant }}" == "noroot" ]]; then
-          cp kernel/out/arch/arm64/boot/Image.gz AnyKernel3/
-        else
-          cp ${{ matrix.variant }}/out/arch/arm64/boot/Image.gz AnyKernel3/
-        fi
-
-        cd AnyKernel3
-        zip -r9 "../$ZIP_NAME" ./*
-        echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
-
-    - name: Upload Flashable Kernel ZIP
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ steps.zipkernel.outputs.zip_name }}
-        path: ${{ steps.zipkernel.outputs.zip_name }}
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.zipkernel.outputs.zip_name }}
+          path: ${{ steps.zipkernel.outputs.zip_name }}
 
   release:
     needs: [build]
-    if: ${{ github.event.inputs.RELEASE == 'true' }}
+    if: ${{ github.event.inputs.RELEASE == true }}
     runs-on: ubuntu-latest
     steps:
       - name: Set Current Date
@@ -193,10 +219,10 @@ jobs:
           body_path: release.txt
           files: "**/*.zip"
         env:
-           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Notify Build Success
-        if: ${{ success() && github.event.inputs.NOTIFY_SUCCESS == 'true' }}
+        if: ${{ success() && github.event.inputs.NOTIFY_SUCCESS == true }}
         uses: appleboy/telegram-action@master
         with:
           to: ${{ github.event.inputs.TELEGRAM_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
@@ -205,6 +231,6 @@ jobs:
           disable_web_page_preview: true
           message: |
             <b>✅ WakacaW GKI Build Success</b>
-            <b>📦 Version</b>: <code>Noroot, KSUNext+SUSFS, and SukiSU+SUSFS</code>
+            <b>📦 Variants</b>: Noroot, KSUNext, SukiSU (if selected)
             <b>📅 Date</b>: <code>${{ steps.setdate.outputs.date }}</code>
             <b>🔗 Download</b>: <a href="${{ github.server_url }}/${{ github.repository }}/releases/tag/WakacaW-GKI-${{ steps.setdate.outputs.date }}">Here</a>
