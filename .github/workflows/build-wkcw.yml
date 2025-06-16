@@ -125,7 +125,6 @@ jobs:
           if [[ "${{ matrix.name }}" == "ksunext" ]]; then
             cd ksunext
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -
-            curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next-susfs/kernel/setup.sh" | bash -s next-susfs
           elif [[ "${{ matrix.name }}" == "sukisu" ]]; then
             cd sukisu
             curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
@@ -173,7 +172,7 @@ jobs:
             ZIP_NAME="WakacaW-GKI-${DATE}.zip"
             OUT_DIR="kernel"
           elif [[ "${{ matrix.name }}" == "ksunext" ]]; then
-            ZIP_NAME="WakacaW-GKI-KSUNext+SUSFS-${DATE}.zip"
+            ZIP_NAME="WakacaW-GKI-KSUNext-${DATE}.zip"
             OUT_DIR="ksunext"
           elif [[ "${{ matrix.name }}" == "sukisu" ]]; then
             ZIP_NAME="WakacaW-GKI-SukiSU+SUSFS-${DATE}.zip"
@@ -220,7 +219,7 @@ jobs:
           fi
 
           if [[ "${{ github.event.inputs.BUILD_KSUNEXT }}" == "true" ]]; then
-            echo "- 🛡️ WakacaW-GKI-KSUNext+SUSFS: With root KernelSU Next + SUSFS" >> release.txt
+            echo "- 🛡️ WakacaW-GKI-KSUNext: With root KernelSU Next" >> release.txt
           fi
 
           if [[ "${{ github.event.inputs.BUILD_SUKISU }}" == "true" ]]; then
@@ -230,7 +229,7 @@ jobs:
           echo "" >> release.txt
           echo "📝 **Notes:**" >> release.txt
           echo "- Based on AOSP GKI 5.10" >> release.txt
-          echo "- SUSFS patch applied only on SukiSU & KernelSU" >> release.txt
+          echo "- SUSFS patch applied only on SukiSU" >> release.txt
           echo "- Can be used on GKI-based devices (Android 12-5.10)" >> release.txt
           echo "" >> release.txt
           echo "📄 <b>Full changelog</b>: [Here](${{ github.event.inputs.KERNEL_REPO }}/commits/${{ github.event.inputs.KERNEL_BRANCH }})" >> release.txt
