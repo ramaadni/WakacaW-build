@@ -37,6 +37,15 @@ on:
         default: false
 
 jobs:
+  set-date:
+    runs-on: ubuntu-latest
+    outputs:
+      date: ${{ steps.getdate.outputs.date }}
+    steps:
+      - name: Get Current Date
+        id: getdate
+        run: echo "date=$(date +%Y%m%d)" >> $GITHUB_OUTPUT
+
   setup-matrix:
     runs-on: ubuntu-latest
     outputs:
@@ -59,6 +68,7 @@ jobs:
           echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
 
   notify-start:
+    needs: set-date
     if: ${{ github.event.inputs.NOTIFY_START == 'true' }}
     runs-on: ubuntu-latest
     steps:
@@ -73,7 +83,7 @@ jobs:
             <b>🚀 WakacaW GKI Build Started</b>
             🔧 <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">View Workflow Run</a>
             <b>📦 Variants</b>: <code>${{ github.event.inputs.BUILD_NOROOT == 'true' && 'Noroot' || '' }} ${{ github.event.inputs.BUILD_KSUNEXT == 'true' && 'KSUNext' || '' }} ${{ github.event.inputs.BUILD_SUKISU == 'true' && 'SukiSU' || '' }}</code>
-            <b>📅 Date</b>: <code>${{ steps.setdate.outputs.date }}</code>
+            <b>📅 Date</b>: <code>${{ needs.set-date.outputs.date }}</code>
 
   build:
     needs: [setup-matrix]
@@ -183,15 +193,13 @@ jobs:
           path: ${{ steps.zipkernel.outputs.zip_name }}
 
   finalize:
-    needs: [build]
+    needs: [set-date, build]
     runs-on: ubuntu-latest
-    if: always()
     outputs:
-      date: ${{ steps.setdate.outputs.date }}
+      date: ${{ needs.set-date.outputs.date }}
     steps:
-      - name: Set Current Date
-        id: setdate
-        run: echo "date=$(date +%Y%m%d)" >> "$GITHUB_OUTPUT"
+      - name: Dummy Finalize
+        run: echo "Finalize completed"
 
   release:
     needs: [finalize]
